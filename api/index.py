@@ -47,16 +47,17 @@ async def extract_parameters(update: Update, context):
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), extract_parameters))
 
-# Webhook Route for Vercel
+@app.post("/")
 @app.post("/api/index")
 async def webhook(request: Request):
     data = await request.json()
-    update = Update.de_json(data, telegram_app.bot)
     
-    await telegram_app.initialize()
-    await telegram_app.process_update(update)
-    await telegram_app.shutdown()
-    
+    async with telegram_app:
+        await telegram_app.start()
+        update = Update.de_json(data, telegram_app.bot)
+        await telegram_app.process_update(update)
+        await telegram_app.stop()
+        
     return {"status": "ok"}
 
 @app.get("/")
