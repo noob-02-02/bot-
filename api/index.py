@@ -1,5 +1,6 @@
 import os
 import logging
+from html import escape
 from urllib.parse import parse_qs, urlparse
 from fastapi import FastAPI, Request
 from telegram import Update
@@ -27,21 +28,24 @@ async def extract_parameters(update: Update, context):
         query_string = user_text if "?" in user_text else f"?{user_text}"
         parsed_url = urlparse(f"http://dummy.com/{query_string}")
 
-    query_params = parse_qs(parsed_url.query)
+    # keep_blank_values=True ensures empty parameters like af_ip= are also caught
+    query_params = parse_qs(parsed_url.query, keep_blank_values=True)
 
     if not query_params:
         await update.message.reply_text("❌ Is URL ya text mein koi bhi parameters nahi mile.")
         return
 
-    response = "🔍 **Extracted Parameters:**\n\n"
+    response = "🔍 <b>Extracted Parameters:</b>\n\n"
     for key, values in query_params.items():
-        response += f"• **{key}**: `{values[0]}`\n"
+        val = escape(values[0]) if values[0] else "<i>(empty)</i>"
+        response += f"• <b>{escape(key)}</b>: <code>{val}</code>\n"
 
     if parsed_url.netloc not in ["dummy.com", ""]:
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-        response = f"🌐 **Base URL:**\n`{base_url}`\n\n" + response
+        response = f"🌐 <b>Base URL:</b>\n<code>{escape(base_url)}</code>\n\n" + response
 
-    await update.message.reply_text(response, parse_mode="Markdown")
+    # Using HTML parse_mode stops Telegram from crashing on underscore '_' characters
+    await update.message.reply_text(response, parse_mode="HTML")
 
 # Add Handlers
 telegram_app.add_handler(CommandHandler("start", start))
