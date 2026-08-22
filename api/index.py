@@ -1,49 +1,59 @@
-import os
-import requests
-from fastapi import FastAPI, Request
+import logging
+from urllib.parse import parse_qs, urlparse
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-app = FastAPI()
+# Logging setup
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-TOKEN = "8868389563:AAEK2-SWGgmt5B88oR6Ny3KbdmcpHLvb-0U"
-TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
-ADMIN_USER_ID = 8372837217
+# /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Hello! Mujhe koi bhi URL bhejiye, main usme se sare parameters "
+        "(jaise aff_id, click_id, etc.) alag karke de dunga."
+    )
 
-@app.post("/api/index")
-async def webhook(req: Request):
-    try:
-        data = await req.json()
-        
-        if "message" in data:
-            message = data["message"]
-            user_id = message["from"]["id"]
-            chat_id = message["chat"]["id"]
-            text = message.get("text", "")
-            
-            # Admin check
-            if user_id != ADMIN_USER_ID:
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={
-                    "chat_id": chat_id,
-                    "text": "⛔ Aapko is bot ko use karne ki anumati nahi hai."
-                })
-                return {"status": "ok"}
-                
-            if text.startswith("/start"):
-                reply = (
-                    "👋 **Welcome to your Vercel Bot!**\n\n"
-                    "**Commands:**\n"
-                    "🔹 `/start` - Bot start karein\n"
-                    "🔹 `/help` - Help message dekhein"
-                )
-            else:
-                reply = f"🤖 Aapne kaha: {text}"
+# URL parameters extract karne ka function
+async def extract_parameters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text.strip()
+    
+    # URL parse karein
+    parsed_url = urlparse(user_text)
+    if not parsed_url.scheme or not parsed_url.netloc:
+        query_string = user_text if "?" in user_text else f"?{user_text}"
+        parsed_url = urlparse(f"http://dummy.com/{query_string}")
 
-            requests.post(f"{TELEGRAM_API}/sendMessage", json={
-                "chat_id": chat_id,
-                "text": reply,
-                "parse_mode": "Markdown"
-            })
-            
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        
-    return {"status": "ok"}
+    query_params = parse_qs(parsed_url.query)
+
+    if not query_params:
+        await update.message.reply_text("❌ Is URL ya text mein koi bhi parameters nahi mile.")
+        return
+
+    # Response format karein
+    response = "🔍 **Extracted Parameters:**\n\n"
+    for key, values in query_params.items():
+        response += f"• **{key}**: `{values[0]}`\n"
+
+    if parsed_url.netloc != "dummy.com" and parsed_url.netloc != "":
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        response = f"🌐 **Base URL:**\n`{base_url}`\n\n" + response
+
+    await update.message.reply_text(response, parse_mode="Markdown")
+
+def main():
+    # Aapka Bot Token yahan set hai
+    TOKEN = "8761704094:AAHYOLC_IRlct6YukFPYtTJlRZRmNCfEDGI"
+
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    # Handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), extract_parameters))
+
+    print("🤖 Bot start ho gaya hai aur live hai...")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
